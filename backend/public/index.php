@@ -12,6 +12,9 @@ header('Content-Type: application/json; charset=utf-8');
 
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+$parts = explode('/', trim($path, '/'));
+$resource = $parts[0];   // retona "users"
+$id = $parts[1] ?? null;         // retorna o valor do id informado na requisição, ou null se não houver
 
 // Preflight do navegador: responde sem conteúdo para requisições OPTIONS (CORS)
 if ($method === 'OPTIONS') {
@@ -20,13 +23,30 @@ if ($method === 'OPTIONS') {
 }
 
 // GET /users: lista todos os usuários
-if ($method === 'GET' && $path === '/users') {
+if ($method === 'GET' && $resource === 'users' && $id === null) {
     $pdo = Database::getConnection();
     $stmt = $pdo->query('SELECT id, name, email, login, active, created_at FROM users');
     $users = $stmt->fetchAll();
 
     http_response_code(200);
     echo json_encode($users, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// GET /users/{id}: busca um usuário específico pelo ID
+if ($method === 'GET' && $resource === 'users' && $id !== null) {
+    $pdo = Database::getConnection();
+    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+    $user = $stmt->fetch();
+
+    if ($user) {
+        http_response_code(200);
+        echo json_encode($user, JSON_UNESCAPED_UNICODE);
+    } else {
+        http_response_code(404);
+        echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
+    }
     exit;
 }
 
