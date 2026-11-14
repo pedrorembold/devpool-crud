@@ -16,6 +16,7 @@ $parts = explode('/', trim($path, '/'));
 $resource = $parts[0];   // retona "users"
 $id = $parts[1] ?? null;         // retorna o valor do id informado na requisição, ou null se não houver
 
+
 // Preflight do navegador: responde sem conteúdo para requisições OPTIONS (CORS)
 if ($method === 'OPTIONS') {
     http_response_code(204);
@@ -47,6 +48,75 @@ if ($method === 'GET' && $resource === 'users' && $id !== null) {
         http_response_code(404);
         echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
     }
+    exit;
+}
+
+if($method === 'POST' && $resource === 'users'&& $id === null) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    
+    if ($input === null) {
+        http_response_code(400);
+        echo json_encode(['error' => 'JSON inválido'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $pdo = Database::getConnection();
+    
+    if(!isset($input['name']) || mb_strlen(trim($input['name'])) < 3) {
+        http_response_code(400);
+        echo json_encode(['error'=> 'O nome é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
+        exit;    
+    }
+
+    if(!isset($input['email']) || !filter_var($input['email'], FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['error'=> 'O email é obrigatório e deve ser no formato "email@email.com"'], JSON_UNESCAPED_UNICODE);
+        exit;    
+    }
+
+    if(!isset($input['login']) || mb_strlen(trim($input['login'])) < 3) {
+        http_response_code(400);
+        echo json_encode(['error'=> 'O login é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
+        exit;    
+    }
+
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :login');
+        $stmt->execute(['login' => $input['login']]);
+        $count = $stmt->fetchColumn();
+        if($count > 0) {
+            http_response_code(400);
+            echo json_encode(['error'=> 'O login informado já está em uso, ecolha outro.'], JSON_UNESCAPED_UNICODE);
+        exit;
+        }
+    
+
+    if(!isset($input['password']) || mb_strlen($input['password']) < 8) {
+        http_response_code(400);
+        echo json_encode(['error'=> 'A senha é obrigatória e deve ter pelo menos 8 caracteres'], JSON_UNESCAPED_UNICODE);
+        exit;    
+    }
+
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :email');
+    $stmt->execute(['email' => $input['email']]);
+    $count = $stmt->fetchColumn();
+        if($count > 0) {
+            http_response_code(400);
+            echo json_encode(['error'=> 'O email informado já está em uso, ecolha outro.'], JSON_UNESCAPED_UNICODE);
+        exit;
+        }
+
+
+    $stmt = $pdo->prepare('INSERT INTO users (name, email, login, password_hash) VALUES (:name, :email, :login, :password)');
+    $stmt->execute([
+        'name' => trim($input['name'], ' '),
+        'email' => $input['email'],
+        'login' => $input['login'],
+        'password' => password_hash($input['password'], PASSWORD_DEFAULT)
+    ]);
+
+    http_response_code(201);
+    echo json_encode(['message' => 'Usuário criado com sucesso'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
