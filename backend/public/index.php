@@ -37,7 +37,7 @@ function formatUser(array $user): array
 // GET /users: lista todos os usuários
 if ($method === 'GET' && $resource === 'users' && $id === null) {
     $pdo = Database::getConnection();
-    $stmt = $pdo->query('SELECT id, name, email, login, active, created_at FROM users');
+    $stmt = $pdo->query('SELECT id, name, email, login, active, created_at FROM users WHERE deleted_at IS NULL');
     $users = array_map('formatUser', $stmt->fetchAll());
 
     http_response_code(200);
@@ -48,7 +48,7 @@ if ($method === 'GET' && $resource === 'users' && $id === null) {
 // GET /users/{id}: busca um usuário específico pelo ID
 if ($method === 'GET' && $resource === 'users' && $id !== null) {
     $pdo = Database::getConnection();
-    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id');
+    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id AND deleted_at IS NULL');
     $stmt->execute(['id' => $id]);
     $user = $stmt->fetch();
 
@@ -163,7 +163,7 @@ if ($method === 'PUT' && $resource === 'users' && $id !== null) {
 
     $pdo = Database::getConnection();
     // Busca usuário atual
-    $stmt = $pdo->prepare('SELECT id, name, email, login, active, password_hash FROM users WHERE id = :id');
+    $stmt = $pdo->prepare('SELECT id, name, email, login, active, password_hash FROM users WHERE id = :id AND deleted_at IS NULL');
     $stmt->execute(['id' => $id]);
     $currentUser = $stmt->fetch();
 
@@ -255,6 +255,31 @@ if ($method === 'PUT' && $resource === 'users' && $id !== null) {
     echo json_encode($user, JSON_UNESCAPED_UNICODE);
     exit;
 }
+
+
+// DELETE /users/{id}: marca um usuário como excluído
+if ($method === 'DELETE' && $resource === 'users' && $id !== null) {
+
+
+    $pdo = Database::getConnection();
+    $stmt = $pdo->prepare('SELECT id FROM users WHERE id = :id AND deleted_at IS NULL');
+    $stmt->execute(['id' => $id]);
+    $user = $stmt->fetch();
+
+    if (!$user) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    // Atualiza o campo deleted_at para marcar o usuário como excluído
+    $stmt = $pdo->prepare('UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+
+    http_response_code(204);
+    exit;
+}
+
 
 // Nenhuma rota corresponde: retorna 404
 http_response_code(404);
