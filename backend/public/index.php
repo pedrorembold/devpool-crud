@@ -10,10 +10,13 @@ header('Access-Control-Allow-Headers: Content-Type');
 // Responde toda requisição com JSON
 header('Content-Type: application/json; charset=utf-8');
 
+// oculta a versão do PHP nas respostas, por segurança.
+header_remove('X-Powered-By');
+
 $method = $_SERVER['REQUEST_METHOD'];
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
-$resource = $parts[0];   // retona "users"
+$resource = $parts[0];   // retorna "users"
 $id = $parts[1] ?? null;         // retorna o valor do id informado na requisição, ou null se não houver
 
 
@@ -23,11 +26,19 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
+// converte o active do usuário para booleano para retornar na resposta da API, já que o banco retorna 0 ou 1.
+function formatUser(array $user): array
+{
+    $user['active'] = (bool) $user['active'];
+    return $user;
+}
+
+
 // GET /users: lista todos os usuários
 if ($method === 'GET' && $resource === 'users' && $id === null) {
     $pdo = Database::getConnection();
     $stmt = $pdo->query('SELECT id, name, email, login, active, created_at FROM users');
-    $users = $stmt->fetchAll();
+    $users = array_map('formatUser', $stmt->fetchAll());
 
     http_response_code(200);
     echo json_encode($users, JSON_UNESCAPED_UNICODE);
@@ -43,7 +54,7 @@ if ($method === 'GET' && $resource === 'users' && $id !== null) {
 
     if ($user) {
         http_response_code(200);
-        echo json_encode($user, JSON_UNESCAPED_UNICODE);
+        echo json_encode(formatUser($user), JSON_UNESCAPED_UNICODE);
     } else {
         http_response_code(404);
         echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
@@ -131,8 +142,13 @@ if ($method === 'POST' && $resource === 'users' && $id === null) {
         'active' => (int)$active
     ]);
 
+
+    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id');
+    $stmt->execute(['id' => $pdo->lastInsertId()]);
+    $user = formatUser($stmt->fetch());
+
     http_response_code(201);
-    echo json_encode(['message' => 'Usuário criado com sucesso'], JSON_UNESCAPED_UNICODE);
+    echo json_encode($user, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
