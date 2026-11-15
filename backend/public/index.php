@@ -133,12 +133,12 @@ if ($method === 'POST' && $resource === 'users' && $id === null) {
     }
 
 
-    $stmt = $pdo->prepare('INSERT INTO users (name, email, login, password_hash, active) VALUES (:name, :email, :login, :password, :active)');
+    $stmt = $pdo->prepare('INSERT INTO users (name, email, login, password_hash, active) VALUES (:name, :email, :login, :password_hash, :active)');
     $stmt->execute([
         'name' => $name,
         'email' => $email,
         'login' => $login,
-        'password' => password_hash($password, PASSWORD_DEFAULT),
+        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
         'active' => (int)$active
     ]);
 
@@ -148,6 +148,110 @@ if ($method === 'POST' && $resource === 'users' && $id === null) {
     $user = formatUser($stmt->fetch());
 
     http_response_code(201);
+    echo json_encode($user, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
+// PUT /users/{id}: atualiza um usuário existente
+if ($method === 'PUT' && $resource === 'users' && $id !== null) {
+    $input = json_decode(file_get_contents('php://input'), true);
+    if ($input === null) {
+        http_response_code(400);
+        echo json_encode(['error' => 'JSON inválido'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $pdo = Database::getConnection();
+    // Busca usuário atual
+    $stmt = $pdo->prepare('SELECT id, name, email, login, active, password_hash FROM users WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+    $currentUser = $stmt->fetch();
+
+    if (!$currentUser) {
+        http_response_code(404);
+        echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $currentUser = formatUser($currentUser);
+
+    // Trata os inputs antes de validar para evitar espaços em branco e warnings do php por retorno null no JSON.
+    $name = trim($input['name'] ?? '');
+    $email = trim($input['email'] ?? '');
+    $login = trim($input['login'] ?? '');
+    $password = $input['password'] ?? null;
+    $active = $input['active'] ?? $currentUser['active'];
+
+
+    if (mb_strlen($name) < 3) {
+        http_response_code(400);
+        echo json_encode(['error' => 'O nome é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'O email é obrigatório e deve ser no formato "email@email.com"'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if (mb_strlen($login) < 3) {
+        http_response_code(400);
+        echo json_encode(['error' => 'O login é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if ($password !== null && mb_strlen($password) < 8) {
+        http_response_code(400);
+        echo json_encode(['error' => 'A senha deve ter pelo menos 8 caracteres'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if (!is_bool($active)) {
+        http_response_code(400);
+        echo json_encode(['error' => 'O campo "active" deve ser booleano (true ou false)'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :email AND id != :id');
+    $stmt->execute(['email' => $email, 'id' => $id]);
+    $count = $stmt->fetchColumn();
+    if ($count > 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'O email informado já está em uso, escolha outro.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :login AND id != :id');
+    $stmt->execute(['login' => $login, 'id' => $id]);
+    $count = $stmt->fetchColumn();
+    if ($count > 0) {
+        http_response_code(400);
+        echo json_encode(['error' => 'O login informado já está em uso, escolha outro.'], JSON_UNESCAPED_UNICODE);
+        exit;
+    }
+
+    if ($password !== null) {
+        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
+    } else {
+        $passwordHash = $currentUser['password_hash'];
+    }
+
+    $stmt = $pdo->prepare('UPDATE users SET name = :name, email = :email, login = :login, password_hash = :password_hash, active = :active WHERE id = :id');
+    $stmt->execute([
+        'name' => $name,
+        'email' => $email,
+        'login' => $login,
+        'password_hash' => $passwordHash,
+        'active' => (int)$active,
+        'id' => $id
+    ]);
+
+    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id');
+    $stmt->execute(['id' => $id]);
+    $user = formatUser($stmt->fetch());
+
+    http_response_code(200);
     echo json_encode($user, JSON_UNESCAPED_UNICODE);
     exit;
 }
