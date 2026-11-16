@@ -1,6 +1,7 @@
 <?php
 
 require __DIR__ . '/../src/Database.php';
+require __DIR__ . '/../src/Models/User.php';
 
 // CORS: permite que o frontend acesse a API em outra porta ou domínio.
 header('Access-Control-Allow-Origin: *');
@@ -26,41 +27,33 @@ if ($method === 'OPTIONS') {
     exit;
 }
 
-// converte o active do usuário para booleano para retornar na resposta da API, já que o banco retorna 0 ou 1.
-function formatUser(array $user): array
-{
-    $user['active'] = (bool) $user['active'];
-    return $user;
-}
-
+$userModel = new User(Database::getConnection());
 
 // GET /users: lista todos os usuários
 if ($method === 'GET' && $resource === 'users' && $id === null) {
-    $pdo = Database::getConnection();
-    $stmt = $pdo->query('SELECT id, name, email, login, active, created_at FROM users WHERE deleted_at IS NULL');
-    $users = array_map('formatUser', $stmt->fetchAll());
 
     http_response_code(200);
-    echo json_encode($users, JSON_UNESCAPED_UNICODE);
+    echo json_encode($userModel->findAll(), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 // GET /users/{id}: busca um usuário específico pelo ID
 if ($method === 'GET' && $resource === 'users' && $id !== null) {
-    $pdo = Database::getConnection();
-    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id AND deleted_at IS NULL');
-    $stmt->execute(['id' => $id]);
-    $user = $stmt->fetch();
+    $user = $userModel->findById((int) $id);
 
     if ($user) {
         http_response_code(200);
-        echo json_encode(formatUser($user), JSON_UNESCAPED_UNICODE);
+        echo json_encode($user, JSON_UNESCAPED_UNICODE);
     } else {
         http_response_code(404);
         echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
     }
     exit;
 }
+
+
+// =============== CONTINUAR DAQUI CORRIGINDO A PARTIR DO MODEL ==============
+
 
 // POST /users: cria um novo usuário
 if ($method === 'POST' && $resource === 'users' && $id === null) {
@@ -73,208 +66,79 @@ if ($method === 'POST' && $resource === 'users' && $id === null) {
     }
 
     // Trata os inputs antes de validar para evitar espaços em branco e warnings do php por retorno null no JSON.
-    $name = trim($input['name'] ?? '');
-    $email = trim($input['email'] ?? '');
-    $login = trim($input['login'] ?? '');
-    $password = $input['password'] ?? '';
-    $active = $input['active'] ?? true;
+    $data = [
+        'name' => trim($input['name'] ?? ''),
+        'email' => trim($input['email'] ?? ''),
+        'login' => trim($input['login'] ?? ''),
+        'password' => $input['password'] ?? null,
+        'active' => $input['active'] ?? true,
+    ];
 
+    $error = $userModel->validate($data);
 
-    if (mb_strlen($name) < 3) {
+    if ($error) {
         http_response_code(400);
-        echo json_encode(['error' => 'O nome é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['error' => $error], JSON_UNESCAPED_UNICODE);
         exit;
     }
-
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O email é obrigatório e deve ser no formato "email@email.com"'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    if (mb_strlen($login) < 3) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O login é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    if (mb_strlen($password) < 8) {
-        http_response_code(400);
-        echo json_encode(['error' => 'A senha é obrigatória e deve ter pelo menos 8 caracteres'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    if (!is_bool($active)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O campo "active" deve ser booleano (true ou false)'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $pdo = Database::getConnection();
-
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :login');
-    $stmt->execute(['login' => $login]);
-    $count = $stmt->fetchColumn();
-
-    if ($count > 0) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O login informado já está em uso, escolha outro.'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :email');
-    $stmt->execute(['email' => $email]);
-    $count = $stmt->fetchColumn();
-    if ($count > 0) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O email informado já está em uso, escolha outro.'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-
-    $stmt = $pdo->prepare('INSERT INTO users (name, email, login, password_hash, active) VALUES (:name, :email, :login, :password_hash, :active)');
-    $stmt->execute([
-        'name' => $name,
-        'email' => $email,
-        'login' => $login,
-        'password_hash' => password_hash($password, PASSWORD_DEFAULT),
-        'active' => (int)$active
-    ]);
-
-
-    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id');
-    $stmt->execute(['id' => $pdo->lastInsertId()]);
-    $user = formatUser($stmt->fetch());
+    $newId = $userModel->create($data);
 
     http_response_code(201);
-    echo json_encode($user, JSON_UNESCAPED_UNICODE);
+    echo json_encode($userModel->findById($newId), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 // PUT /users/{id}: atualiza um usuário existente
 if ($method === 'PUT' && $resource === 'users' && $id !== null) {
-    $input = json_decode(file_get_contents('php://input'), true);
-    if ($input === null) {
-        http_response_code(400);
-        echo json_encode(['error' => 'JSON inválido'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
+    $current = $userModel->findById((int) $id);
 
-    $pdo = Database::getConnection();
-    // Busca usuário atual
-    $stmt = $pdo->prepare('SELECT id, name, email, login, active, password_hash FROM users WHERE id = :id AND deleted_at IS NULL');
-    $stmt->execute(['id' => $id]);
-    $currentUser = $stmt->fetch();
-
-    if (!$currentUser) {
+    if (!$current) {
         http_response_code(404);
         echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    $currentUser = formatUser($currentUser);
+    $input = json_decode(file_get_contents('php://input'), true);
 
-    // Trata os inputs antes de validar para evitar espaços em branco e warnings do php por retorno null no JSON.
-    $name = trim($input['name'] ?? '');
-    $email = trim($input['email'] ?? '');
-    $login = trim($input['login'] ?? '');
-    $password = $input['password'] ?? null;
-    $active = $input['active'] ?? $currentUser['active'];
-
-
-    if (mb_strlen($name) < 3) {
+    if (!is_array($input)) {
         http_response_code(400);
-        echo json_encode(['error' => 'O nome é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['error' => 'JSON inválido'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    $data = [
+        'name' => trim($input['name'] ?? ''),
+        'email' => trim($input['email'] ?? ''),
+        'login' => trim($input['login'] ?? ''),
+        'password' => $input['password'] ?? null,
+        'active' => $input['active'] ?? $current['active'],
+    ];
+
+    $error = $userModel->validate($data, (int) $id);
+
+    if ($error) {
         http_response_code(400);
-        echo json_encode(['error' => 'O email é obrigatório e deve ser no formato "email@email.com"'], JSON_UNESCAPED_UNICODE);
+        echo json_encode(['error' => $error], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    if (mb_strlen($login) < 3) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O login é obrigatório e deve ter pelo menos 3 caracteres'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    if ($password !== null && mb_strlen($password) < 8) {
-        http_response_code(400);
-        echo json_encode(['error' => 'A senha deve ter pelo menos 8 caracteres'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    if (!is_bool($active)) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O campo "active" deve ser booleano (true ou false)'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE email = :email AND id != :id');
-    $stmt->execute(['email' => $email, 'id' => $id]);
-    $count = $stmt->fetchColumn();
-    if ($count > 0) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O email informado já está em uso, escolha outro.'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    $stmt = $pdo->prepare('SELECT COUNT(*) FROM users WHERE login = :login AND id != :id');
-    $stmt->execute(['login' => $login, 'id' => $id]);
-    $count = $stmt->fetchColumn();
-    if ($count > 0) {
-        http_response_code(400);
-        echo json_encode(['error' => 'O login informado já está em uso, escolha outro.'], JSON_UNESCAPED_UNICODE);
-        exit;
-    }
-
-    if ($password !== null) {
-        $passwordHash = password_hash($password, PASSWORD_DEFAULT);
-    } else {
-        $passwordHash = $currentUser['password_hash'];
-    }
-
-    $stmt = $pdo->prepare('UPDATE users SET name = :name, email = :email, login = :login, password_hash = :password_hash, active = :active WHERE id = :id');
-    $stmt->execute([
-        'name' => $name,
-        'email' => $email,
-        'login' => $login,
-        'password_hash' => $passwordHash,
-        'active' => (int)$active,
-        'id' => $id
-    ]);
-
-    $stmt = $pdo->prepare('SELECT id, name, email, login, active, created_at FROM users WHERE id = :id');
-    $stmt->execute(['id' => $id]);
-    $user = formatUser($stmt->fetch());
+    $userModel->update((int) $id, $data);
 
     http_response_code(200);
-    echo json_encode($user, JSON_UNESCAPED_UNICODE);
+    echo json_encode($userModel->findById((int) $id), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
 
 // DELETE /users/{id}: marca um usuário como excluído
 if ($method === 'DELETE' && $resource === 'users' && $id !== null) {
-
-
-    $pdo = Database::getConnection();
-    $stmt = $pdo->prepare('SELECT id FROM users WHERE id = :id AND deleted_at IS NULL');
-    $stmt->execute(['id' => $id]);
-    $user = $stmt->fetch();
-
-    if (!$user) {
+    if (!$userModel->findById((int) $id)) {
         http_response_code(404);
         echo json_encode(['error' => 'Usuário não encontrado'], JSON_UNESCAPED_UNICODE);
         exit;
     }
 
-    // Atualiza o campo deleted_at para marcar o usuário como excluído
-    $stmt = $pdo->prepare('UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = :id');
-    $stmt->execute(['id' => $id]);
+    $userModel->softDelete((int) $id);
 
     http_response_code(204);
     exit;
