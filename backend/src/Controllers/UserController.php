@@ -12,6 +12,7 @@ class UserController
     // GET /users: 
     public function index(): void
     {
+        //throw new Exception('Teste de erro');
         $this->respond(200, $this->userModel->findAll());
     }
 

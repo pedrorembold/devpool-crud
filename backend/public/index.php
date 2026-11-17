@@ -34,14 +34,22 @@ if ($id !== null && !ctype_digit($id)) {
     exit;
 }
 
-$userController = new UserController(new User(Database::getConnection()));
+try {
+    $userController = new UserController(new User(Database::getConnection()));
 
-if ($resource === 'users') {
-    if ($method === 'GET' && $id === null)    $userController->index();
-    if ($method === 'GET' && $id !== null)    $userController->show((int) $id);
-    if ($method === 'POST' && $id === null)   $userController->store();
-    if ($method === 'PUT' && $id !== null)    $userController->update((int) $id);
-    if ($method === 'DELETE' && $id !== null) $userController->destroy((int) $id);
+    if ($resource === 'users') {
+        if ($method === 'GET' && $id === null)    $userController->index();
+        if ($method === 'GET' && $id !== null)    $userController->show((int) $id);
+        if ($method === 'POST' && $id === null)   $userController->store();
+        if ($method === 'PUT' && $id !== null)    $userController->update((int) $id);
+        if ($method === 'DELETE' && $id !== null) $userController->destroy((int) $id);
+    }
+} catch (Throwable $e) {
+    // Qualquer erro inesperado
+    error_log((string) $e);
+    http_response_code(500);
+    echo json_encode(['error' => 'Erro interno do servidor. Tente novamente.'], JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 
