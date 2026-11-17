@@ -20,16 +20,17 @@ $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
 $parts = explode('/', trim($path, '/'));
 $resource = $parts[0];   // retorna "users"
 $id = $parts[1] ?? null;         // retorna o valor do id informado na requisição, ou null se não houver
-// O id, se existir, precisa ser composto só de dígitos
-if ($id !== null && !ctype_digit($id)) {
-    http_response_code(404);
-    echo json_encode(['error' => 'Rota não encontrada'], JSON_UNESCAPED_UNICODE);
-    exit;
-}
 
 // Preflight do navegador: responde sem conteúdo para requisições OPTIONS (CORS)
 if ($method === 'OPTIONS') {
     http_response_code(204);
+    exit;
+}
+
+// O id, se existir, precisa ser composto só de dígitos
+if ($id !== null && !ctype_digit($id)) {
+    http_response_code(404);
+    echo json_encode(['error' => 'Rota não encontrada'], JSON_UNESCAPED_UNICODE);
     exit;
 }
 
