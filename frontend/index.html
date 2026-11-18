@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de Usuários</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Carregado Vue3 pelo CDN -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+</head>
+
+<body>
+    <!-- Vue controla essa div abaixo-->
+    <div id="app">
+        <h1>Gestão de Usuários</h1>
+
+        <p v-if="loading">Carregando...</p>
+        <p v-else-if="error" class="error">{{ error }}</p>
+        <p v-else-if="users.length === 0">Nenhum usuário cadastrado.</p>
+
+        <table v-else>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Nome</th>
+                    <th>E-mail</th>
+                    <th>Login</th>
+                    <th>Status</th>
+                    <th>Criado em</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr v-for="user in users" :key="user.id">
+                    <td>{{ user.id }}</td>
+                    <td>{{ user.name }}</td>
+                    <td>{{ user.email }}</td>
+                    <td>{{ user.login }}</td>
+                    <td>{{ user.active ? 'Ativo' : 'Inativo' }}</td>
+                    <td>{{ formatDate(user.created_at) }}</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+
+</html>
