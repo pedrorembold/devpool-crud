@@ -6,7 +6,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Gestão de Usuários</title>
     <link rel="stylesheet" href="style.css">
-    <!-- Carregado Vue3 pelo CDN -->
+    <!-- Carregando Vue3 pelo CDN -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
 </head>
 
@@ -14,6 +14,46 @@
     <!-- Vue controla essa div abaixo-->
     <div id="app">
         <h1>Gestão de Usuários</h1>
+
+        <p v-if="successMessage" class="success">{{ successMessage }}</p>
+        <p v-if="actionError" class="error">{{ actionError }}</p>
+
+        <form @submit.prevent="saveUser" class="card" novalidate>
+            <h2>{{ editingId ? 'Editar usuário' : 'Novo usuário' }}</h2>
+
+            <label>
+                Nome
+                <input v-model="form.name" type="text">
+            </label>
+
+            <label>
+                E-mail
+                <input v-model="form.email" type="email">
+            </label>
+
+            <label>
+                Login
+                <input v-model="form.login" type="text">
+            </label>
+
+            <label>
+                Senha
+                <input v-model="form.password" type="password"
+                    :placeholder="editingId ? 'Deixe em branco para manter a atual' : ''">
+            </label>
+
+            <label class="checkbox">
+                <input v-model="form.active" type="checkbox">
+                Ativo
+            </label>
+
+            <p v-if="formError" class="error">{{ formError }}</p>
+
+            <button type="submit" :disabled="saving">
+                {{ saving ? 'Salvando...' : 'Salvar' }}
+            </button>
+            <button v-if="editingId" type="button" @click="resetForm">Cancelar</button>
+        </form>
 
         <p v-if="loading">Carregando...</p>
         <p v-else-if="error" class="error">{{ error }}</p>
@@ -28,6 +68,7 @@
                     <th>Login</th>
                     <th>Status</th>
                     <th>Criado em</th>
+                    <th>Ações</th>
                 </tr>
             </thead>
             <tbody>
@@ -38,6 +79,8 @@
                     <td>{{ user.login }}</td>
                     <td>{{ user.active ? 'Ativo' : 'Inativo' }}</td>
                     <td>{{ formatDate(user.created_at) }}</td>
+                    <td><button @click="editUser(user)">Editar</button></td>
+                    <td><button @click="deleteUser(user)">Excluir</button></td>
                 </tr>
             </tbody>
         </table>
