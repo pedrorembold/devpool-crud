@@ -1,6 +1,7 @@
 {
-  "name": "Natasha Caldeirão",
-  "email": "natasha.caldeirao@email.com",
-  "login": "natashacaldeirao",
-  "password": "seila123"
+  "name": "Ana Souza",
+  "email": "ana@email.com",
+  "login": "anasouza",
+  "password": "senha1234",
+  "active": true
 }
